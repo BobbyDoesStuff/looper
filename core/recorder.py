@@ -1,11 +1,11 @@
-import pyaudio
-import wave
 import tkinter as tk
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.animation as animation
+import pyaudio
 import numpy as np
 import threading
+import wave
 
 # Audio settings
 CHUNK = 1024
@@ -96,7 +96,7 @@ def play_loop():
     while True:
         for loop in loops:
             if loop["is_playing"]:
-                stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
+                stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True)
                 for frame in loop["frames"]:
                     if not loop["is_playing"]:
                         break
