@@ -14,8 +14,10 @@ p = pyaudio.PyAudio()
 
 # Global variables
 is_recording = threading.Event()
+stop_all_playback = threading.Event()
 recording_count = 0
 loops = []
+playback_threads = []
 
 # Directory where the recordings will be saved
 output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -46,23 +48,26 @@ def record_audio():
     save_recording_to_wav(output_filename)
 
 def play_audio_loop(loop_index):
-    output_filename = os.path.join(output_dir, f"output_{loop_index + 1}.wav")
-    wf = wave.open(output_filename, 'rb')
+    try:
+        output_filename = os.path.join(output_dir, f"output_{loop_index + 1}.wav")
+        wf = wave.open(output_filename, 'rb')
 
-    while loops[loop_index]["is_playing"]:
-        wf.rewind()  # Reset to the beginning of the file
-        stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True)
+        while loops[loop_index]["is_playing"] and not stop_all_playback.is_set():
+            wf.rewind()  # Reset to the beginning of the file
+            stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
+                            channels=wf.getnchannels(),
+                            rate=wf.getframerate(),
+                            output=True)
 
-        data = wf.readframes(CHUNK)
-        while data and loops[loop_index]["is_playing"]:
-            stream.write(data)
             data = wf.readframes(CHUNK)
+            while data and loops[loop_index]["is_playing"] and not stop_all_playback.is_set():
+                stream.write(data)
+                data = wf.readframes(CHUNK)
 
-        stream.stop_stream()
-        stream.close()
+            stream.stop_stream()
+            stream.close()
+    except Exception as e:
+        print(f"Error in playback loop: {e}")
 
 def toggle_recording():
     if is_recording.is_set():
@@ -92,7 +97,7 @@ def stop_recording():
     start_playback(recording_count - 1)
 
 def create_loop_box(loop_index):
-    frame = tk.Frame(app, width=100, height=20, relief=tk.RIDGE, borderwidth=1)
+    frame = tk.Frame(app, width=200, height=20, relief=tk.RIDGE, borderwidth=1)
     frame.pack(fill=tk.X, pady=2)
     frame.pack_propagate(False)  # Prevent frame from resizing to fit the label
 
@@ -115,7 +120,9 @@ def toggle_loop(loop_index, button):
 
 def start_playback(loop_index):
     loops[loop_index]["is_playing"] = True
-    threading.Thread(target=play_audio_loop, args=(loop_index,)).start()
+    playback_thread = threading.Thread(target=play_audio_loop, args=(loop_index,))
+    playback_threads.append(playback_thread)
+    playback_thread.start()
 
 def stop_playback(loop_index):
     loops[loop_index]["is_playing"] = False
@@ -129,13 +136,21 @@ def save_recording_to_wav(file_path):
     wf.writeframes(b''.join(recorded_frames))
     wf.close()
 
+def on_closing():
+    stop_all_playback.set()
+    for loop in loops:
+        loop["is_playing"] = False
+    for thread in playback_threads:
+        thread.join()
+    p.terminate()
+    app.destroy()
+
 # GUI setup
 app = tk.Tk()
 app.title("Simple Voice Recorder")
+app.protocol("WM_DELETE_WINDOW", on_closing)
 
 record_btn = tk.Button(app, text="Record", command=toggle_recording)
 record_btn.pack()
 
 app.mainloop()
-
-p.terminate()
