@@ -3,12 +3,14 @@ import pyaudio
 import wave
 import tkinter as tk
 import threading
+import numpy as np
 
 # Audio settings
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
+SILENCE_THRESHOLD = 500  # Adjust this threshold based on your audio levels
 
 p = pyaudio.PyAudio()
 
@@ -43,9 +45,29 @@ def record_audio():
     stream.stop_stream()
     stream.close()
 
-    # Save the recording to a uniquely named file
+    # Process recorded frames to remove initial silence
+    trimmed_frames = trim_initial_silence(recorded_frames)
+
+    # Save the trimmed recording to a uniquely named file
     output_filename = os.path.join(output_dir, f"output_{recording_count}.wav")
-    save_recording_to_wav(output_filename)
+    save_recording_to_wav(output_filename, trimmed_frames)
+
+def trim_initial_silence(frames):
+    # Convert frames to a single numpy array
+    audio_data = np.frombuffer(b''.join(frames), dtype=np.int16)
+    # Find the index where the sound starts
+    start_index = 0
+    for i in range(0, len(audio_data), CHUNK):
+        chunk = audio_data[i:i+CHUNK]
+        if np.max(np.abs(chunk)) > SILENCE_THRESHOLD:
+            start_index = i
+            break
+    # Return trimmed frames
+    trimmed_audio_data = audio_data[start_index:]
+    return [
+        trimmed_audio_data[i : i + CHUNK].tobytes()
+        for i in range(0, len(trimmed_audio_data), CHUNK)
+    ]
 
 def play_audio_loop(loop_index):
     try:
@@ -90,7 +112,6 @@ def stop_recording():
     # Save the recording to a uniquely named file
     recording_count += 1
     output_filename = os.path.join(output_dir, f"output_{recording_count}.wav")
-    save_recording_to_wav(output_filename)
     
     # Automatically start playback
     create_loop_box(recording_count - 1)
@@ -128,12 +149,12 @@ def stop_playback(loop_index):
     loops[loop_index]["is_playing"] = False
 
 # Save recording to WAV file
-def save_recording_to_wav(file_path):
+def save_recording_to_wav(file_path, frames):
     wf = wave.open(file_path, 'wb')
     wf.setnchannels(CHANNELS)
     wf.setsampwidth(p.get_sample_size(FORMAT))
     wf.setframerate(RATE)
-    wf.writeframes(b''.join(recorded_frames))
+    wf.writeframes(b''.join(frames))
     wf.close()
 
 def on_closing():
