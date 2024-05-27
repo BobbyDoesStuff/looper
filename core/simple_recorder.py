@@ -22,7 +22,12 @@ loops = []
 playback_threads = []
 
 # Directory where the recordings will be saved
-output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+script_dir = os.path.dirname(__file__)
+root_dir = os.path.abspath(os.path.join(script_dir, '..'))
+output_dir = os.path.join(root_dir, 'recordings')
+
+# Ensure the recordings directory exists
+os.makedirs(output_dir, exist_ok=True)
 
 def record_audio():
     global recorded_frames
@@ -51,6 +56,10 @@ def record_audio():
     # Save the trimmed recording to a uniquely named file
     output_filename = os.path.join(output_dir, f"output_{recording_count}.wav")
     save_recording_to_wav(output_filename, trimmed_frames)
+    
+    # Automatically start playback
+    create_loop_box(recording_count - 1)
+    start_playback(recording_count - 1)
 
 def trim_initial_silence(frames):
     # Convert frames to a single numpy array
@@ -91,7 +100,7 @@ def play_audio_loop(loop_index):
     except Exception as e:
         print(f"Error in playback loop: {e}")
 
-def toggle_recording():
+def toggle_recording(event=None):
     if is_recording.is_set():
         stop_recording()
     else:
@@ -99,6 +108,7 @@ def toggle_recording():
 
 def start_recording():
     global recorded_frames
+    print("Starting recording...")
     recorded_frames = []
     is_recording.set()
     record_btn.config(text="Stop Recording")
@@ -106,6 +116,7 @@ def start_recording():
 
 def stop_recording():
     global recording_count
+    print("Stopping recording...")
     is_recording.clear()
     record_btn.config(text="Record")
 
@@ -113,10 +124,6 @@ def stop_recording():
     recording_count += 1
     output_filename = os.path.join(output_dir, f"output_{recording_count}.wav")
     
-    # Automatically start playback
-    create_loop_box(recording_count - 1)
-    start_playback(recording_count - 1)
-
 def create_loop_box(loop_index):
     frame = tk.Frame(app, width=200, height=20, relief=tk.RIDGE, borderwidth=1)
     frame.pack(fill=tk.X, pady=2)
@@ -170,6 +177,9 @@ def on_closing():
 app = tk.Tk()
 app.title("Simple Voice Recorder")
 app.protocol("WM_DELETE_WINDOW", on_closing)
+
+# Bind spacebar to toggle recording
+app.bind('<space>', toggle_recording)
 
 record_btn = tk.Button(app, text="Record", command=toggle_recording)
 record_btn.pack()
