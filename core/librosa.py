@@ -1,21 +1,17 @@
 import librosa
 import numpy as np
 import soundfile as sf
-from scipy.spatial.distance import cdist
 
-# Load reference and target audio files
-ref_y, ref_sr = librosa.load('reference_tempo.wav')
-target_y, target_sr = librosa.load('off_tempo_guitar.wav')
+# Load the audio file
+y, sr = librosa.load('guitar_rhythm.wav')
 
-# Extract features (e.g., MFCC)
-ref_mfcc = librosa.feature.mfcc(ref_y, sr=ref_sr)
-target_mfcc = librosa.feature.mfcc(target_y, sr=target_sr)
+# Estimate the tempo
+tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
 
-# Calculate DTW
-D, wp = librosa.sequence.dtw(X=ref_mfcc.T, Y=target_mfcc.T, metric='euclidean')
-
-# Warp the target audio to match the reference tempo
-target_aligned = librosa.effects.time_stretch(target_y, wp)
+# Adjust the tempo
+desired_tempo = 120  # Your desired tempo in BPM
+tempo_ratio = desired_tempo / tempo
+y_fast = librosa.effects.time_stretch(y, tempo_ratio)
 
 # Save the adjusted audio
-sf.write('aligned_guitar.wav', target_aligned, target_sr)
+sf.write('guitar_rhythm_adjusted.wav', y_fast, sr)
