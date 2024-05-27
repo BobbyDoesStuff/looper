@@ -4,7 +4,6 @@ import wave
 import tkinter as tk
 import threading
 import numpy as np
-import time
 
 # Audio settings
 CHUNK = 1024
@@ -89,20 +88,20 @@ def play_audio_loop(loop_index):
 
         # Preload all audio data into memory
         audio_data = wf.readframes(wf.getnframes())
+        wf.close()
 
         while loops[loop_index]["is_playing"] and not stop_all_playback.is_set():
-            stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                            channels=wf.getnchannels(),
-                            rate=wf.getframerate(),
+            stream = p.open(format=p.get_format_from_width(2),  # 2 bytes for paInt16
+                            channels=CHANNELS,
+                            rate=RATE,
                             output=True)
 
-            # Play the preloaded audio data in a loop
-            start_time = time.time()
+            start_index = 0
             while loops[loop_index]["is_playing"] and not stop_all_playback.is_set():
-                stream.write(audio_data)
-                elapsed_time = time.time() - start_time
-                if elapsed_time < len(audio_data) / (RATE * 2):  # Ensure it doesn't loop too early
-                    time.sleep((len(audio_data) / (RATE * 2)) - elapsed_time)
+                stream.write(audio_data[start_index:start_index + CHUNK])
+                start_index += CHUNK
+                if start_index >= len(audio_data):
+                    start_index = 0  # Loop back to the beginning
 
             stream.stop_stream()
             stream.close()
@@ -139,25 +138,30 @@ def create_loop_box(loop_index):
     loop_toggle_btn = tk.Button(frame, text="On", command=lambda: toggle_loop(loop_index, loop_toggle_btn))
     loop_toggle_btn.pack(side=tk.RIGHT)
 
-    loops.append({"is_playing": True, "toggle_btn": loop_toggle_btn})
+    loops.append({"is_playing": True, "toggle_btn": loop_toggle_btn, "thread": None})
 
 def toggle_loop(loop_index, button):
     loop = loops[loop_index]
     loop["is_playing"] = not loop["is_playing"]
     button.config(text="On" if loop["is_playing"] else "Off")
     if loop["is_playing"]:
-        start_playback(loop_index)
+        if loop["thread"] is None or not loop["thread"].is_alive():
+            loop["thread"] = threading.Thread(target=play_audio_loop, args=(loop_index,))
+            loop["thread"].start()
     else:
         stop_playback(loop_index)
 
 def start_playback(loop_index):
     loops[loop_index]["is_playing"] = True
-    playback_thread = threading.Thread(target=play_audio_loop, args=(loop_index,))
-    playback_threads.append(playback_thread)
-    playback_thread.start()
+    if loops[loop_index]["thread"] is None or not loops[loop_index]["thread"].is_alive():
+        playback_thread = threading.Thread(target=play_audio_loop, args=(loop_index,))
+        loops[loop_index]["thread"] = playback_thread
+        playback_thread.start()
 
 def stop_playback(loop_index):
     loops[loop_index]["is_playing"] = False
+    if loops[loop_index]["thread"] is not None:
+        loops[loop_index]["thread"].join()
 
 # Save recording to WAV file
 def save_recording_to_wav(file_path, frames):
@@ -172,8 +176,9 @@ def on_closing():
     stop_all_playback.set()
     for loop in loops:
         loop["is_playing"] = False
-    for thread in playback_threads:
-        thread.join()
+    for loop in loops:
+        if loop["thread"] is not None:
+            loop["thread"].join()
     p.terminate()
     app.destroy()
 
