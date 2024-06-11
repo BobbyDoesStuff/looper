@@ -14,7 +14,7 @@ class AudioLooper:
         format=pyaudio.paInt16,
         channels=1,
         rate=44100,
-        silence_threshold=5000,
+        silence_threshold=300000,
     ):
         self.chunk = chunk
         self.format = format
@@ -43,17 +43,16 @@ class AudioLooper:
 
         print("* recording")
 
-        recorded_frames = []
+        def audio_stream_generator():
+            try:
+                while self.is_recording.is_set():
+                    yield stream.read(self.chunk)
+            finally:
+                print("* done recording")
+                stream.stop_stream()
+                stream.close()
 
-        while self.is_recording.is_set():
-            data = stream.read(self.chunk)
-            recorded_frames.append(data)
-        print("* done recording")
-
-        stream.stop_stream()
-        stream.close()
-
-        trimmed_frames = self.trim_initial_silence(recorded_frames)
+        trimmed_frames = self.trim_initial_silence(audio_stream_generator())
 
         output_filename = os.path.join(
             self.output_dir, f"output_{self.recording_count + 1}.wav"
