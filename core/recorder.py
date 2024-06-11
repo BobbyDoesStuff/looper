@@ -32,27 +32,23 @@ class AudioLooper:
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    def record_audio(self):
-        stream = self.p.open(
+    def audio_stream_generator(self):
+        with self.p.open(
             format=self.format,
             channels=self.channels,
             rate=self.rate,
             input=True,
             frames_per_buffer=self.chunk,
-        )
-
-        print("* recording")
-
-        def audio_stream_generator():
+        ) as stream:
+            print("* recording")
             try:
                 while self.is_recording.is_set():
                     yield stream.read(self.chunk)
             finally:
                 print("* done recording")
-                stream.stop_stream()
-                stream.close()
 
-        trimmed_frames = self.trim_initial_silence(audio_stream_generator())
+    def record_audio(self):
+        trimmed_frames = self.trim_initial_silence(self.audio_stream_generator())
 
         output_filename = self.output_dir / f"output_{self.recording_count + 1}.wav"
         self.save_recording_to_wav(output_filename, trimmed_frames)
@@ -165,7 +161,7 @@ class AudioLooper:
         if self.loops[loop_index]["thread"] is not None:
             self.loops[loop_index]["thread"].join()
 
-    def save_recording_to_wav(self, file_path, frames):
+    def save_recording_to_wav(self, file_path: pathlib.Path, frames):
         with wave.open(file_path, "wb") as wf:
             wf.setnchannels(self.channels)
             wf.setsampwidth(self.p.get_sample_size(self.format))
