@@ -82,24 +82,22 @@ class AudioLooper:
                 self.loops[loop_index]["is_playing"]
                 and not self.stop_all_playback.is_set()
             ):
-                stream = self.p.open(
+                with self.p.open(
                     format=self.p.get_format_from_width(2),
                     channels=self.channels,
                     rate=self.rate,
                     output=True,
-                )
+                ) as stream:
 
-                start_index = 0
-                while (
-                    self.loops[loop_index]["is_playing"]
-                    and not self.stop_all_playback.is_set()
-                ):
-                    stream.write(audio_data[start_index: start_index + self.chunk])
-                    start_index += self.chunk
-                    if start_index >= len(audio_data):
-                        start_index = 0
-                stream.stop_stream()
-                stream.close()
+                    start_index = 0
+                    while (
+                        self.loops[loop_index]["is_playing"]
+                        and not self.stop_all_playback.is_set()
+                    ):
+                        stream.write(audio_data[start_index: start_index + self.chunk])
+                        start_index += self.chunk
+                        if start_index >= len(audio_data):
+                            start_index = 0
         except Exception as e:
             print(f"Error in playback loop: {e}")
 
