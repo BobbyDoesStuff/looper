@@ -1,4 +1,4 @@
-import os
+import pathlib
 import pyaudio
 import wave
 import tkinter as tk
@@ -9,12 +9,12 @@ import numpy as np
 class AudioLooper:
     def __init__(
         self,
-        output_dir,
-        chunk=1024,
-        format=pyaudio.paInt16,
-        channels=1,
-        rate=44100,
-        silence_threshold=300000,
+        output_dir: pathlib.Path,
+        chunk: int = 1024,
+        format: int = pyaudio.paInt16,
+        channels: int = 1,
+        rate: int = 44100,
+        silence_threshold: int = 300000,
     ):
         self.chunk = chunk
         self.format = format
@@ -30,7 +30,7 @@ class AudioLooper:
         self.loops = []
         self.playback_threads = []
 
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     def record_audio(self):
         stream = self.p.open(
@@ -54,9 +54,7 @@ class AudioLooper:
 
         trimmed_frames = self.trim_initial_silence(audio_stream_generator())
 
-        output_filename = os.path.join(
-            self.output_dir, f"output_{self.recording_count + 1}.wav"
-        )
+        output_filename = self.output_dir / f"output_{self.recording_count + 1}.wav"
         self.save_recording_to_wav(output_filename, trimmed_frames)
 
         self.recording_count += 1
@@ -68,25 +66,21 @@ class AudioLooper:
         audio_data = np.frombuffer(b"".join(frames), dtype=np.int16)
         start_index = 0
         for i in range(0, len(audio_data), self.chunk):
-            chunk = audio_data[i : i + self.chunk]
+            chunk = audio_data[i: i + self.chunk]
             if np.max(np.abs(chunk)) > self.silence_threshold:
                 start_index = i
                 break
         trimmed_audio_data = audio_data[start_index:]
         return [
-            trimmed_audio_data[i : i + self.chunk].tobytes()
+            trimmed_audio_data[i: i + self.chunk].tobytes()
             for i in range(0, len(trimmed_audio_data), self.chunk)
         ]
 
     def play_audio_loop(self, loop_index):
         try:
-            output_filename = os.path.join(
-                self.output_dir, f"output_{loop_index + 1}.wav"
-            )
-            wf = wave.open(output_filename, "rb")
-
-            audio_data = wf.readframes(wf.getnframes())
-            wf.close()
+            output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
+            with wave.open(output_filename, "rb") as wf:
+                audio_data = wf.readframes(wf.getnframes())
 
             while (
                 self.loops[loop_index]["is_playing"]
@@ -104,7 +98,7 @@ class AudioLooper:
                     self.loops[loop_index]["is_playing"]
                     and not self.stop_all_playback.is_set()
                 ):
-                    stream.write(audio_data[start_index : start_index + self.chunk])
+                    stream.write(audio_data[start_index: start_index + self.chunk])
                     start_index += self.chunk
                     if start_index >= len(audio_data):
                         start_index = 0
@@ -172,12 +166,11 @@ class AudioLooper:
             self.loops[loop_index]["thread"].join()
 
     def save_recording_to_wav(self, file_path, frames):
-        wf = wave.open(file_path, "wb")
-        wf.setnchannels(self.channels)
-        wf.setsampwidth(self.p.get_sample_size(self.format))
-        wf.setframerate(self.rate)
-        wf.writeframes(b"".join(frames))
-        wf.close()
+        with wave.open(file_path, "wb") as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(self.p.get_sample_size(self.format))
+            wf.setframerate(self.rate)
+            wf.writeframes(b"".join(frames))
 
     def on_closing(self):
         self.stop_all_playback.set()
@@ -213,9 +206,9 @@ class AudioLooper:
 
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(__file__)
-    root_dir = os.path.abspath(os.path.join(script_dir, ".."))
-    output_dir = os.path.join(root_dir, "recordings")
+    script_dir = pathlib.Path(__file__).resolve().parent
+    root_dir = script_dir.parent
+    output_dir = root_dir / "recordings"
 
     looper = AudioLooper(output_dir)
     looper.run()
