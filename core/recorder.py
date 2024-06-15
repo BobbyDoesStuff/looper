@@ -59,25 +59,57 @@ class AudioLooper:
         self.start_playback(self.recording_count - 1)
 
     def trim_initial_silence(self, frames):
+        # Convert frames to a single NumPy array directly
+
         audio_data = np.frombuffer(b"".join(frames), dtype=np.int16)
-        start_index = 0
-        for i in range(0, len(audio_data), self.chunk):
-            chunk = audio_data[i: i + self.chunk]
-            if np.max(np.abs(chunk)) > self.silence_threshold:
-                start_index = i
-                break
+
+        # Find the start index where the audio exceeds the silence threshold
+
+        abs_audio_data = np.abs(audio_data)
+        above_threshold_indices = np.where(abs_audio_data > self.silence_threshold)[0]
+
+        # If there are no indices above the threshold, use the length of audio_data
+
+        start_index = (
+            above_threshold_indices[0]
+            if len(above_threshold_indices) > 0
+            else len(audio_data)
+        )
+
+        # Adjust start_index to the nearest zero-crossing
+
+        start_index = self.find_nearest_zero_crossing(audio_data, start_index)
+
+        # Slice the array from the start index
+
         trimmed_audio_data = audio_data[start_index:]
-        return [
-            trimmed_audio_data[i: i + self.chunk].tobytes()
-            for i in range(0, len(trimmed_audio_data), self.chunk)
-        ]
+
+        # Adjust the end of trimmed_audio_data to the nearest zero-crossing
+
+        end_index = self.find_nearest_zero_crossing(
+            trimmed_audio_data, len(trimmed_audio_data) - 1
+        )
+        trimmed_audio_data = trimmed_audio_data[: end_index + 1]
+
+        # Convert back to chunks
+
+        trimmed_frames = np.array_split(
+            trimmed_audio_data,
+            np.arange(self.chunk, len(trimmed_audio_data), self.chunk),
+        )
+        return [chunk.tobytes() for chunk in trimmed_frames]
+
+    def find_nearest_zero_crossing(self, audio_data, start_index):
+        zero_crossings = np.where(np.diff(np.sign(audio_data)))[0]
+        if len(zero_crossings) == 0:
+            return start_index
+        return zero_crossings[np.argmin(np.abs(zero_crossings - start_index))]
 
     def play_audio_loop(self, loop_index):
         try:
             output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
             with wave.open(output_filename, "rb") as wf:
                 audio_data = wf.readframes(wf.getnframes())
-
             while (
                 self.loops[loop_index]["is_playing"]
                 and not self.stop_all_playback.is_set()
@@ -94,7 +126,7 @@ class AudioLooper:
                         self.loops[loop_index]["is_playing"]
                         and not self.stop_all_playback.is_set()
                     ):
-                        stream.write(audio_data[start_index: start_index + self.chunk])
+                        stream.write(audio_data[start_index : start_index + self.chunk])
                         start_index += self.chunk
                         if start_index >= len(audio_data):
                             start_index = 0
