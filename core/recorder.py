@@ -5,16 +5,15 @@ import tkinter as tk
 import threading
 import numpy as np
 
-
 class AudioLooper:
     def __init__(
         self,
         output_dir: pathlib.Path,
-        chunk: int = 1024,
-        format: int = pyaudio.paInt16,
-        channels: int = 1,
-        rate: int = 44100,
-        silence_threshold: int = 300000,
+        chunk=1024,
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=44100,
+        silence_threshold=1000,
     ):
         self.chunk = chunk
         self.format = format
@@ -32,23 +31,27 @@ class AudioLooper:
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    def audio_stream_generator(self):
-        with self.p.open(
+    def record_audio(self):
+        stream = self.p.open(
             format=self.format,
             channels=self.channels,
             rate=self.rate,
             input=True,
             frames_per_buffer=self.chunk,
-        ) as stream:
-            print("* recording")
+        )
+
+        print("* recording")
+
+        def audio_stream_generator():
             try:
                 while self.is_recording.is_set():
                     yield stream.read(self.chunk)
             finally:
                 print("* done recording")
+                stream.stop_stream()
+                stream.close()
 
-    def record_audio(self):
-        trimmed_frames = self.trim_initial_silence(self.audio_stream_generator())
+        trimmed_frames = self.trim_initial_silence(audio_stream_generator())
 
         output_filename = self.output_dir / f"output_{self.recording_count + 1}.wav"
         self.save_recording_to_wav(output_filename, trimmed_frames)
@@ -60,16 +63,13 @@ class AudioLooper:
 
     def trim_initial_silence(self, frames):
         # Convert frames to a single NumPy array directly
-
         audio_data = np.frombuffer(b"".join(frames), dtype=np.int16)
 
         # Find the start index where the audio exceeds the silence threshold
-
         abs_audio_data = np.abs(audio_data)
         above_threshold_indices = np.where(abs_audio_data > self.silence_threshold)[0]
 
         # If there are no indices above the threshold, use the length of audio_data
-
         start_index = (
             above_threshold_indices[0]
             if len(above_threshold_indices) > 0
@@ -77,27 +77,23 @@ class AudioLooper:
         )
 
         # Adjust start_index to the nearest zero-crossing
-
         start_index = self.find_nearest_zero_crossing(audio_data, start_index)
 
         # Slice the array from the start index
-
         trimmed_audio_data = audio_data[start_index:]
 
         # Adjust the end of trimmed_audio_data to the nearest zero-crossing
-
         end_index = self.find_nearest_zero_crossing(
             trimmed_audio_data, len(trimmed_audio_data) - 1
         )
         trimmed_audio_data = trimmed_audio_data[: end_index + 1]
 
         # Convert back to chunks
-
         trimmed_frames = np.array_split(
             trimmed_audio_data,
             np.arange(self.chunk, len(trimmed_audio_data), self.chunk),
         )
-        return [chunk.tobytes() for chunk in trimmed_frames]
+        return list(trimmed_frames)
 
     def find_nearest_zero_crossing(self, audio_data, start_index):
         zero_crossings = np.where(np.diff(np.sign(audio_data)))[0]
@@ -108,28 +104,27 @@ class AudioLooper:
     def play_audio_loop(self, loop_index):
         try:
             output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
-            with wave.open(output_filename, "rb") as wf:
+            with wave.open(str(output_filename), "rb") as wf:  # Convert Path object to string
                 audio_data = wf.readframes(wf.getnframes())
-            while (
-                self.loops[loop_index]["is_playing"]
-                and not self.stop_all_playback.is_set()
-            ):
-                with self.p.open(
+
+            while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
+                stream = self.p.open(
                     format=self.p.get_format_from_width(2),
                     channels=self.channels,
                     rate=self.rate,
                     output=True,
-                ) as stream:
-
+                )
+                try:
                     start_index = 0
-                    while (
-                        self.loops[loop_index]["is_playing"]
-                        and not self.stop_all_playback.is_set()
-                    ):
-                        stream.write(audio_data[start_index : start_index + self.chunk])
+                    while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
+                        end_index = start_index + self.chunk
+                        stream.write(audio_data[start_index:end_index])
                         start_index += self.chunk
                         if start_index >= len(audio_data):
                             start_index = 0
+                finally:
+                    stream.stop_stream()
+                    stream.close()
         except Exception as e:
             print(f"Error in playback loop: {e}")
 
@@ -191,8 +186,8 @@ class AudioLooper:
         if self.loops[loop_index]["thread"] is not None:
             self.loops[loop_index]["thread"].join()
 
-    def save_recording_to_wav(self, file_path: pathlib.Path, frames):
-        with wave.open(file_path, "wb") as wf:
+    def save_recording_to_wav(self, file_path, frames):
+        with wave.open(str(file_path), "wb") as wf:
             wf.setnchannels(self.channels)
             wf.setsampwidth(self.p.get_sample_size(self.format))
             wf.setframerate(self.rate)
@@ -219,6 +214,7 @@ class AudioLooper:
             self.app, text="Record", command=self.toggle_recording
         )
         self.record_btn.pack()
+
 
         self.app.mainloop()
 
