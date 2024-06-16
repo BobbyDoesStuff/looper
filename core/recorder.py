@@ -215,7 +215,6 @@ class AudioLooper:
         )
         self.record_btn.pack()
 
-
         self.app.mainloop()
 
     def toggle_recording(self, event=None):
