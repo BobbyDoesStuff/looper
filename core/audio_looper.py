@@ -238,7 +238,7 @@ class AudioLooper:
 
     def run(self):
         self.app = tk.Tk()
-        self.app.title("Simple Voice Recorder")
+        self.app.title("Simple Audio Looper")
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.app.bind("<space>", lambda event: self.toggle_recording())
         self.record_btn = tk.Button(
