@@ -4,6 +4,7 @@ import wave
 import tkinter as tk
 import threading
 import numpy as np
+from functools import lru_cache
 
 class AudioLooper:
     def __init__(
@@ -31,6 +32,49 @@ class AudioLooper:
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    @lru_cache(maxsize=32)
+    def read_audio_data(self, loop_index):
+        output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
+        with wave.open(str(output_filename), "rb") as wf:
+            return {
+                "data": wf.readframes(wf.getnframes()),
+                "sampwidth": wf.getsampwidth(),
+                "channels": wf.getnchannels(),
+                "framerate": wf.getframerate()
+            }
+
+    def play_audio_loop(self, loop_index):
+        try:
+            audio_info = self.read_audio_data(loop_index)
+            stream = self.open_audio_stream(audio_info)
+            self.play_audio_stream(loop_index, audio_info["data"], stream)
+        except wave.Error as wave_error:
+            print(f"Wave error in playback loop: {wave_error}")
+        except IOError as io_error:
+            print(f"I/O error in playback loop: {io_error}")
+        except Exception as e:
+            print(f"Unexpected error in playback loop: {e}")
+
+    def open_audio_stream(self, audio_info):
+        return self.p.open(
+            format=self.p.get_format_from_width(audio_info["sampwidth"]),
+            channels=audio_info["channels"],
+            rate=audio_info["framerate"],
+            output=True,
+        )
+
+    def play_audio_stream(self, loop_index, audio_data, stream):
+        try:
+            start_index = 0
+            while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
+                end_index = start_index + self.chunk
+                stream.write(audio_data[start_index:end_index])
+                start_index += self.chunk
+                if start_index >= len(audio_data):
+                    start_index = 0
+        finally:
+            stream.stop_stream()
+            stream.close()
 
     def record_audio(self):
         stream = self.p.open(
@@ -61,7 +105,6 @@ class AudioLooper:
 
         self.create_loop_box(self.recording_count - 1)
         self.start_playback(self.recording_count - 1)
-
 
     def trim_initial_silence(self, frames):
         """ This function checks if there is silence 
@@ -105,7 +148,6 @@ class AudioLooper:
         )
         return list(trimmed_frames)
 
-
     def find_nearest_zero_crossing(self, audio_data, start_index):
         """Apply crossfade.
 
@@ -120,45 +162,14 @@ class AudioLooper:
             return start_index
         return zero_crossings[np.argmin(np.abs(zero_crossings - start_index))]
 
-
-    def play_audio_loop(self, loop_index):
-        try:
-            output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
-            with wave.open(str(output_filename), "rb") as wf:  # Convert Path object to string
-                audio_data = wf.readframes(wf.getnframes())
-
-            while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
-                stream = self.p.open(
-                    format=self.p.get_format_from_width(2),
-                    channels=self.channels,
-                    rate=self.rate,
-                    output=True,
-                )
-                try:
-                    start_index = 0
-                    while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
-                        end_index = start_index + self.chunk
-                        stream.write(audio_data[start_index:end_index])
-                        start_index += self.chunk
-                        if start_index >= len(audio_data):
-                            start_index = 0
-                finally:
-                    stream.stop_stream()
-                    stream.close()
-        except Exception as e:
-            print(f"Error in playback loop: {e}")
-
-
     def start_recording(self):
         print("Starting recording...")
         self.is_recording.set()
         threading.Thread(target=self.record_audio).start()
 
-
     def stop_recording(self):
         print("Stopping recording...")
         self.is_recording.clear()
-
 
     def create_loop_box(self, loop_index):
         frame = tk.Frame(self.app, width=200, height=20, relief=tk.RIDGE, borderwidth=1)
@@ -179,7 +190,6 @@ class AudioLooper:
             {"is_playing": True, "toggle_btn": loop_toggle_btn, "thread": None}
         )
 
-
     def toggle_loop(self, loop_index, button):
         loop = self.loops[loop_index]
         loop["is_playing"] = not loop["is_playing"]
@@ -193,7 +203,6 @@ class AudioLooper:
         else:
             self.stop_playback(loop_index)
 
-
     def start_playback(self, loop_index):
         self.loops[loop_index]["is_playing"] = True
         if (
@@ -206,12 +215,10 @@ class AudioLooper:
             self.loops[loop_index]["thread"] = playback_thread
             playback_thread.start()
 
-
     def stop_playback(self, loop_index):
         self.loops[loop_index]["is_playing"] = False
         if self.loops[loop_index]["thread"] is not None:
             self.loops[loop_index]["thread"].join()
-
 
     def save_recording_to_wav(self, file_path, frames):
         with wave.open(str(file_path), "wb") as wf:
@@ -220,34 +227,25 @@ class AudioLooper:
             wf.setframerate(self.rate)
             wf.writeframes(b"".join(frames))
 
-
     def on_closing(self):
         self.stop_all_playback.set()
-
         [loop.update({"is_playing": False}) for loop in self.loops]
-
         threads = [loop["thread"] for loop in self.loops if loop["thread"] is not None]
         for thread in threads:
             thread.join()
-
         self.p.terminate()
         self.app.destroy()
-
 
     def run(self):
         self.app = tk.Tk()
         self.app.title("Simple Voice Recorder")
         self.app.protocol("WM_DELETE_WINDOW", self.on_closing)
-
         self.app.bind("<space>", lambda event: self.toggle_recording())
-
         self.record_btn = tk.Button(
             self.app, text="Record", command=self.toggle_recording
         )
         self.record_btn.pack()
-
         self.app.mainloop()
-
 
     def toggle_recording(self, event=None):
         if self.is_recording.is_set():
@@ -257,11 +255,9 @@ class AudioLooper:
             self.start_recording()
             self.record_btn.config(text="Stop Recording")
 
-
 if __name__ == "__main__":
     script_dir = pathlib.Path(__file__).resolve().parent
     root_dir = script_dir.parent
     output_dir = root_dir / "recordings"
-
     looper = AudioLooper(output_dir)
     looper.run()
