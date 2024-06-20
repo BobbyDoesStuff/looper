@@ -11,6 +11,15 @@ output_dir = pathlib.Path("/tmp/test_recordings")
 audio_looper = AudioLooper(output_dir)
 
 def test_read_audio_data_caching(mocker):
+    """
+    Test the caching behavior of the read_audio_data function.
+    
+    This test ensures that:
+    1. The wave.open function is called on the first invocation of read_audio_data.
+    2. Subsequent calls with the same loop_index use the cached result and do not call wave.open again.
+    3. Calls with a different loop_index result in another call to wave.open.
+    4. The cache correctly returns the cached data for previously accessed loop_indices without additional calls to wave.open.
+    """
     loop_index = 0
     
     # Mock wave.open to track calls and simulate reading a file
