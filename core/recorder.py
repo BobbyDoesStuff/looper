@@ -32,7 +32,7 @@ class AudioLooper:
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    @lru_cache(maxsize=32)
+    @lru_cache(maxsize=100)
     def read_audio_data(self, loop_index):
         output_filename = self.output_dir / f"output_{loop_index + 1}.wav"
         with wave.open(str(output_filename), "rb") as wf:
