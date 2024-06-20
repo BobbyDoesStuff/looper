@@ -64,14 +64,20 @@ class AudioLooper:
         )
 
     def play_audio_stream(self, loop_index, audio_data, stream):
+        audio_length = len(audio_data)
+        start_index = 0
+
         try:
-            start_index = 0
             while self.loops[loop_index]["is_playing"] and not self.stop_all_playback.is_set():
                 end_index = start_index + self.chunk
-                stream.write(audio_data[start_index:end_index])
-                start_index += self.chunk
-                if start_index >= len(audio_data):
+
+                if end_index >= audio_length:
+                    end_index = audio_length
+                    stream.write(audio_data[start_index:end_index])
                     start_index = 0
+                else:
+                    stream.write(audio_data[start_index:end_index])
+                    start_index = end_index
         finally:
             stream.stop_stream()
             stream.close()
@@ -149,14 +155,7 @@ class AudioLooper:
         return list(trimmed_frames)
 
     def find_nearest_zero_crossing(self, audio_data, start_index):
-        """Apply crossfade.
-
-        This when the audio ends and starts again in a formed loop,
-        a slight audio off and then on silence can be heard which
-        happens so quickly that it resembles a clicking sound.
-        This function makes it slightly less noticeable.
-        """
-
+        """Find the nearest zero crossing for smooth audio transitions."""
         zero_crossings = np.where(np.diff(np.sign(audio_data)))[0]
         if len(zero_crossings) == 0:
             return start_index
