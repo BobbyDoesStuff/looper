@@ -152,7 +152,7 @@ class AudioLooper:
             trimmed_audio_data,
             np.arange(self.chunk, len(trimmed_audio_data), self.chunk),
         )
-        return list(trimmed_frames)
+        return (chunk.tobytes() for chunk in trimmed_frames)
 
     def find_nearest_zero_crossing(self, audio_data, start_index):
         """Find the nearest zero crossing for smooth audio transitions."""
