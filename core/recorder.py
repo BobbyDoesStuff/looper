@@ -195,11 +195,13 @@ class AudioLooper:
 
     def on_closing(self):
         self.stop_all_playback.set()
-        for loop in self.loops:
-            loop["is_playing"] = False
-        for loop in self.loops:
-            if loop["thread"] is not None:
-                loop["thread"].join()
+
+        [loop.update({"is_playing": False}) for loop in self.loops]
+
+        threads = [loop["thread"] for loop in self.loops if loop["thread"] is not None]
+        for thread in threads:
+            thread.join()
+
         self.p.terminate()
         self.app.destroy()
 
