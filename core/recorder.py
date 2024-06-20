@@ -31,6 +31,7 @@ class AudioLooper:
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
+
     def record_audio(self):
         stream = self.p.open(
             format=self.format,
@@ -61,7 +62,16 @@ class AudioLooper:
         self.create_loop_box(self.recording_count - 1)
         self.start_playback(self.recording_count - 1)
 
+
     def trim_initial_silence(self, frames):
+        """ This function checks if there is silence 
+        in the beginning of the recording.
+        
+        So if the Record Button is pressed,
+        and nothing is played for a while, the initial silence will
+        get cut out until actual high range of sound is produced
+        (hence the silence threshold parameter)"""
+
         # Convert frames to a single NumPy array directly
         audio_data = np.frombuffer(b"".join(frames), dtype=np.int16)
 
@@ -95,11 +105,21 @@ class AudioLooper:
         )
         return list(trimmed_frames)
 
+
     def find_nearest_zero_crossing(self, audio_data, start_index):
+        """Apply crossfade.
+
+        This when the audio ends and starts again in a formed loop,
+        a slight audio off and then on silence can be heard which
+        happens so quickly that it resembles a clicking sound.
+        This function makes it slightly less noticeable.
+        """
+
         zero_crossings = np.where(np.diff(np.sign(audio_data)))[0]
         if len(zero_crossings) == 0:
             return start_index
         return zero_crossings[np.argmin(np.abs(zero_crossings - start_index))]
+
 
     def play_audio_loop(self, loop_index):
         try:
@@ -128,14 +148,17 @@ class AudioLooper:
         except Exception as e:
             print(f"Error in playback loop: {e}")
 
+
     def start_recording(self):
         print("Starting recording...")
         self.is_recording.set()
         threading.Thread(target=self.record_audio).start()
 
+
     def stop_recording(self):
         print("Stopping recording...")
         self.is_recording.clear()
+
 
     def create_loop_box(self, loop_index):
         frame = tk.Frame(self.app, width=200, height=20, relief=tk.RIDGE, borderwidth=1)
@@ -156,6 +179,7 @@ class AudioLooper:
             {"is_playing": True, "toggle_btn": loop_toggle_btn, "thread": None}
         )
 
+
     def toggle_loop(self, loop_index, button):
         loop = self.loops[loop_index]
         loop["is_playing"] = not loop["is_playing"]
@@ -169,6 +193,7 @@ class AudioLooper:
         else:
             self.stop_playback(loop_index)
 
+
     def start_playback(self, loop_index):
         self.loops[loop_index]["is_playing"] = True
         if (
@@ -181,10 +206,12 @@ class AudioLooper:
             self.loops[loop_index]["thread"] = playback_thread
             playback_thread.start()
 
+
     def stop_playback(self, loop_index):
         self.loops[loop_index]["is_playing"] = False
         if self.loops[loop_index]["thread"] is not None:
             self.loops[loop_index]["thread"].join()
+
 
     def save_recording_to_wav(self, file_path, frames):
         with wave.open(str(file_path), "wb") as wf:
@@ -192,6 +219,7 @@ class AudioLooper:
             wf.setsampwidth(self.p.get_sample_size(self.format))
             wf.setframerate(self.rate)
             wf.writeframes(b"".join(frames))
+
 
     def on_closing(self):
         self.stop_all_playback.set()
@@ -204,6 +232,7 @@ class AudioLooper:
 
         self.p.terminate()
         self.app.destroy()
+
 
     def run(self):
         self.app = tk.Tk()
@@ -218,6 +247,7 @@ class AudioLooper:
         self.record_btn.pack()
 
         self.app.mainloop()
+
 
     def toggle_recording(self, event=None):
         if self.is_recording.is_set():
