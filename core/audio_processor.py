@@ -40,12 +40,9 @@ class AudioProcessor:
         )
         trimmed_audio_data = trimmed_audio_data[: end_index + 1]
 
-        # Convert back to chunks
-        trimmed_frames = np.array_split(
-            trimmed_audio_data,
-            np.arange(AudioProcessor.CHUNK_SIZE, len(trimmed_audio_data), AudioProcessor.CHUNK_SIZE),
-        )
-        return (chunk.tobytes() for chunk in trimmed_frames)
+        return trimmed_audio_data
+
+
 
     @staticmethod
     def find_nearest_zero_crossing(audio_data: np.ndarray, start_index: int) -> int:
@@ -56,6 +53,6 @@ class AudioProcessor:
         return zero_crossings[np.argmin(np.abs(zero_crossings - start_index))]
 
     @staticmethod
-    def split_into_chunks(audio_data: np.ndarray) -> Iterator[bytes]:
-        for i in range(0, len(audio_data), AudioProcessor.CHUNK_SIZE):
-            yield audio_data[i:i+AudioProcessor.CHUNK_SIZE].tobytes()
+    def split_into_chunks(audio_data: np.ndarray) -> List[bytes]:
+        return [audio_data[i:i+AudioProcessor.CHUNK_SIZE].tobytes() 
+                for i in range(0, len(audio_data), AudioProcessor.CHUNK_SIZE)]

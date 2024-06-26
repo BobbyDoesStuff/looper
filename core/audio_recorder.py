@@ -3,7 +3,7 @@ import wave
 import threading
 from typing import List
 import logging
-from audio_handler import AudioHandler, AUDIO_FORMAT, CHANNELS, RATE, CHUNK_SIZE
+from audio_handler import AsyncAudioHandler, AUDIO_FORMAT, CHANNELS, RATE, CHUNK_SIZE
 from audio_processor import AudioProcessor
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ class AudioRecorder:
         self.is_recording = threading.Event()
         self.recording_count = 0
 
-    def record_audio(self, audio_handler: AudioHandler) -> str:
+    def record_audio(self, audio_handler: AsyncAudioHandler) -> str:
         stream = audio_handler.open_input_stream()
         frames: List[bytes] = []
         try:
@@ -36,7 +36,7 @@ class AudioRecorder:
         self.recording_count += 1
         return str(output_filename)
 
-    def _save_recording_to_wav(self, file_path: pathlib.Path, frames: List[bytes], audio_handler: AudioHandler):
+    def _save_recording_to_wav(self, file_path: pathlib.Path, frames: List[bytes], audio_handler: AsyncAudioHandler):
         trimmed_frames = AudioProcessor.trim_initial_silence(frames)
         with wave.open(str(file_path), "wb") as wf:
             wf.setnchannels(CHANNELS)

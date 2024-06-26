@@ -4,7 +4,7 @@ from typing import Dict, Any
 from functools import lru_cache
 import numpy as np
 import pyaudio
-from audio_handler import AudioHandler, CHUNK_SIZE
+from audio_handler import AsyncAudioHandler, CHUNK_SIZE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class AudioPlayer:
                 "framerate": wf.getframerate()
             }
 
-    def play_audio_loop(self, filename: str, audio_handler: AudioHandler, is_playing: threading.Event):
+    def play_audio_loop(self, filename: str, audio_handler: AsyncAudioHandler, is_playing: threading.Event):
         try:
             audio_info = self.read_audio_data(filename)
             stream = audio_handler.open_output_stream(audio_info)

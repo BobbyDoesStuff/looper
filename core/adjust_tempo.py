@@ -1,85 +1,81 @@
-import numpy as np
 import librosa
 import soundfile as sf
+import numpy as np
+import sys
 
 def load_audio(file_path):
-    y, sr = librosa.load(file_path, sr=None)
-    print(f"Audio loaded: {file_path}, Sample Rate: {sr}, Duration: {len(y) / sr} seconds")
-    return y, sr
+    """Load an audio file."""
+    try:
+        y, sr = librosa.load(file_path)
+        return y, sr
+    except Exception as e:
+        print(f"Error loading audio file: {e}")
+        sys.exit(1)
 
-def detect_beats(y, sr):
-    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
-    beat_times = librosa.frames_to_time(beats, sr=sr)
-    print(f"Detected Tempo: {tempo} BPM, Number of Beats: {len(beat_times)}")
-    return tempo, beat_times
+def detect_tempo(y, sr):
+    """Detect the tempo of the audio."""
+    try:
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        if hasattr(tempo, '__len__'):
+            print(f"Warning: Multiple tempo values detected: {tempo}")
+            tempo = np.mean(tempo)  # Take the average if multiple tempos
+        return float(tempo)
+    except Exception as e:
+        print(f"Error detecting tempo: {e}")
+        return None
 
-def adjust_tempo(y, sr, beat_times, target_tempo):
-    D = librosa.stft(y)
-    hop_length = 512  # Default hop length for librosa.stft
-    beat_frames = librosa.time_to_frames(beat_times, sr=sr, hop_length=hop_length)
-    original_tempo = 60 / np.mean(np.diff(beat_times))
-    target_interval = (60 / target_tempo) * sr / hop_length  # Target interval in frames per beat
-    print(f"Original Tempo: {original_tempo} BPM")
-    print(f"Target Interval: {target_interval} frames")
-
-    adjusted_D = []
-
-    for i in range(len(beat_frames) + 1):
-        if i == 0:
-            start_frame = 0
-        else:
-            start_frame = beat_frames[i-1]
-
-        if i < len(beat_frames):
-            end_frame = beat_frames[i]
-        else:
-            end_frame = D.shape[1]
+def correct_rhythm(y, sr, original_tempo, target_tempo):
+    """Correct the rhythm of the audio to match the target tempo."""
+    try:
+        # Calculate the time stretch factor
+        stretch_factor = target_tempo / original_tempo
+        print(f"Stretch factor: {stretch_factor}")
         
-        if end_frame <= start_frame or start_frame >= D.shape[1] or end_frame > D.shape[1]:
-            print(f"Skipping invalid segment from {start_frame} to {end_frame}")
-            continue
+        # Use librosa's time_stretch function
+        y_stretched = librosa.effects.time_stretch(y, rate=stretch_factor)
+        
+        return y_stretched
+    except Exception as e:
+        print(f"Error correcting rhythm: {e}")
+        return None
 
-        segment = D[:, start_frame:end_frame]
-        if segment.shape[1] == 0:
-            print(f"Skipping empty segment from {start_frame} to {end_frame}")
-            continue
+def save_audio(y, sr, file_path):
+    """Save the processed audio to a file."""
+    try:
+        sf.write(file_path, y, sr)
+    except Exception as e:
+        print(f"Error saving audio file: {e}")
 
-        current_interval = end_frame - start_frame
-        time_stretch_factor = target_interval / current_interval
-        print(f"Processing segment from {start_frame} to {end_frame}")
-        print(f"  Current interval: {current_interval} frames")
-        print(f"  Target interval: {target_interval} frames")
-        print(f"  Calculated time stretch factor: {time_stretch_factor}")
-        print(f"  Segment shape before stretching: {segment.shape}")
+def main():
+    input_file = r"C:\projects\looper\recordings\output_5.wav"
+    output_file = "output_corrected.wav"
+    target_bpm = 300  # Set your desired BPM here
 
-        if time_stretch_factor > 0:
-            stretched_segment = librosa.phase_vocoder(segment, rate=time_stretch_factor)
-            print(f"  Segment shape after stretching: {stretched_segment.shape}")
-            adjusted_D.append(stretched_segment)
-        else:
-            print(f"Skipping segment from {start_frame} to {end_frame} due to invalid stretch factor: {time_stretch_factor}")
+    # Load the audio
+    y, sr = load_audio(input_file)
+    if y is None or sr is None:
+        return
 
-    if len(adjusted_D) == 0:
-        print("No valid segments to concatenate")
-        return y  # Return the original audio if no segments were adjusted
+    print(f"Audio loaded. Shape: {y.shape}, Sample rate: {sr}")
 
-    adjusted_D = np.hstack(adjusted_D)
-    adjusted_y = librosa.istft(adjusted_D, hop_length=hop_length)
-    print(f"Adjusted audio duration: {len(adjusted_y) / sr} seconds")
-    return adjusted_y
+    # Detect original tempo
+    original_tempo = detect_tempo(y, sr)
+    if original_tempo is None:
+        return
+    print(f"Original tempo: {original_tempo:.2f} BPM")
 
-def save_audio(y, sr, output_path):
-    sf.write(output_path, y, sr)
-    print(f"Audio saved: {output_path}")
+    # Correct the rhythm
+    corrected_audio = correct_rhythm(y, sr, original_tempo, target_bpm)
+    if corrected_audio is None:
+        return
 
-def main(input_path, output_path, target_tempo):
-    y, sr = load_audio(input_path)
-    _, beat_times = detect_beats(y, sr)
-    adjusted_y = adjust_tempo(y, sr, beat_times, target_tempo)
-    save_audio(adjusted_y, sr, output_path)
+    print(f"Corrected audio shape: {corrected_audio.shape}")
+
+    # Save the processed audio
+    save_audio(corrected_audio, sr, output_file)
+
+    print(f"Processed audio saved to {output_file}")
+    print(f"Target tempo: {target_bpm} BPM")
 
 if __name__ == "__main__":
-    input_path = r'C:\projects\looper\recordings\output_13.wav'
-    output_path = 'output_audio.wav'
-    target_tempo = 120
-    main(input_path, output_path, target_tempo)
+    main()
